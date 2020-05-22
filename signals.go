@@ -5,7 +5,11 @@ package main
 import (
 	"os"
 	"os/signal"
-
+        "os/exec"
+        "time"
+        "syscall"
+        "strings"
+ 
 	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/runc/libcontainer/utils"
@@ -76,7 +80,62 @@ func (h *signalHandler) forward(process *libcontainer.Process, tty *tty, detach 
 	// Perform the initial tty resize. Always ignore errors resizing because
 	// stdout might have disappeared (due to races with when SIGHUP is sent).
 	_ = tty.resize()
-	// Handle and forward signals.
+        app := "echo"
+        arg0 := "-e"
+        arg1 := "Hello World"
+        arg2 := "\n\t from"
+        arg3 := "golang"
+        arg4 := "domid"
+        cmd := exec.Command(app, arg0, arg1, arg2, arg3)
+        stdout, err := cmd.Output()
+        logrus.Debug(string(stdout))
+ 
+        app = "xenstore-read"
+        cmd = exec.Command(app, arg4)
+        stdout, err = cmd.Output()
+        parDomU := string(stdout)
+        logrus.Debug(parDomU)
+       
+        app = "/home/new-gen/xen/tools/libvchan/clone"
+        arg0 = "client"
+        arg1 = "write"
+        dom0 := "0"
+        vchan_path := "data/vchan"
+        cmd = exec.Command(app, arg0, arg1, dom0, vchan_path, parDomU)
+        stdout, err = cmd.Output()
+        
+       time.Sleep(60 * time.Second)
+        
+       app = "xenstore-read"
+       cmd = exec.Command(app, arg4)
+       stdout, err = cmd.Output()
+       childDomU := string(stdout)
+       logrus.Debug(childDomU)
+
+       if parDomU == childDomU{
+             cPath := strings.TrimSpace("/local/domain/" + parDomU) 
+             cmd = exec.Command(app, cPath)
+             stdout, err = cmd.Output()
+             childDomU = string(stdout)
+             logrus.Debug(childDomU)
+             
+             app = "/home/new-gen/xen/tools/libvchan/vchan-node1"
+             cmd = exec.Command(app, "client", "write", childDomU, "data/comm")
+             stdout, err = cmd.Output()
+
+             logrus.Debug("exiting")
+             _ = syscall.Kill(pid1, syscall.SIGKILL)
+ 
+        } else {
+             time.Sleep(15 * time.Second)
+             vPath := "local/domain/" + parDomU
+             vPath = vPath + "/data/comm" 
+             vPath = strings.TrimSpace(vPath)
+             logrus.Debug(vPath) 
+             cmd = exec.Command(app, "server", "read", parDomU, vPath) 
+             _, _ = cmd.Output()
+        }         
+// Handle and forward signals.
 	for s := range h.signals {
 		switch s {
 		case unix.SIGWINCH:
